@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-02-26T13:04:02.876607",
+  "results": {
+    "substations": {
+      "url": "https://oceandata.rad.rutgers.edu/arcgis/rest/services/RenewableEnergy/HIFLD_Electric_SubstationsTransmissionLines/MapServer/0",
+      "label": "Rutgers MARCO \u2014 MapServer layer 0"
+    },
+    "transmission_lines": {
+      "url": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Power_Transmission_Lines/FeatureServer/0"
+    },
+    "fema_nfhl": {
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28",
+      "label": "New path \u2014 /arcgis/rest/ layer 28"
+    },
+    "epa_echo": {
+      "url": "https://echodata.epa.gov/echo/echo_rest_services.get_facilities?output=JSON&p_st=TX&p_lat=30.628&p_long=-96.334&p_radius=1",
+      "label": "echodata \u2014 echo_rest_services"
+    },
+    "tceq_SWPM_Non_Radioactive_Hazardous_Materials_Routes": {
+      "url": "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/SWPM_Non_Radioactive_Hazardous_Materials_Routes/FeatureServer/0"
+    },
+    "usfws_critical_habitat": {
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/USFWS_Critical_Habitat/FeatureServer/0"
+    }
+  }
+}

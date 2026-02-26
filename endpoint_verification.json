@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-02-26T12:57:24.657639",
+  "results": [
+    {
+      "name": "HIFLD Substations (new)",
+      "status": "ERROR",
+      "detail": "Invalid URL"
+    },
+    {
+      "name": "HIFLD Transmission Lines (new)",
+      "status": "OK",
+      "fields": [
+        "OBJECTID_1",
+        "OBJECTID",
+        "ID",
+        "TYPE",
+        "STATUS",
+        "NAICS_CODE",
+        "NAICS_DESC",
+        "SOURCE"
+      ],
+      "sample_count": 2,
+      "detail": "19 fields, got 2 sample features"
+    },
+    {
+      "name": "FEMA NFHL Flood Zones",
+      "status": "FAILED",
+      "detail": "404 Client Error: Not Found for url: https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28?f=json"
+    },
+    {
+      "name": "EPA Envirofacts (SEMS)",
+      "status": "FAILED",
+      "detail": "500 Server Error: INTERNAL SERVER ERROR for url: https://data.epa.gov/efservice/sems.sems_active_sites/state_code/TX/rows/0:2/json"
+    },
+    {
+      "name": "EPA ECHO",
+      "status": "FAILED",
+      "detail": "404 Client Error: Not Found for url: https://echo.epa.gov/api/echo_rest_services.get_facilities?output=JSON&p_st=TX&p_lat=30.628&p_long=-96.334&p_radius=1"
+    },
+    {
+      "name": "TCEQ LPST (Leaking Petroleum Storage)",
+      "status": "ERROR",
+      "detail": "Invalid URL"
+    },
+    {
+      "name": "TCEQ PST (Petroleum Storage Tanks)",
+      "status": "ERROR",
+      "detail": "Invalid URL"
+    },
+    {
+      "name": "USFWS NWI Wetlands",
+      "status": "FAILED",
+      "detail": "HTTPSConnectionPool(host='fwspublicservices.wim.usgs.gov', port=443): Read timed out. (read timeout=30)"
+    },
+    {
+      "name": "USFWS Critical Habitat",
+      "status": "ERROR",
+      "detail": "Item does not exist or is inaccessible."
+    }
+  ]
+}

@@ -4,22 +4,26 @@
 # =============================================================================
 
 hifld:
+  # NOTE: HIFLD migrated from services1.arcgis.com/Hp6G80Pky0om6HgQ (dead Aug 2025)
+  #        to services2.arcgis.com/FiaPA4ga0iQKduv3 — updated Feb 2026
+
   # Electric Substations
   substations:
-    base_url: "https://services1.arcgis.com/Hp6G80Pky0om6HgQ/arcgis/rest/services/Electric_Substations/FeatureServer/0"
+    base_url: "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Substations/FeatureServer/0"
     query_path: "/query"
     format: "geojson"
     # Key fields: NAME, CITY, STATE, ZIP, TYPE, STATUS, OWNER, MAX_VOLT, MIN_VOLT, LATITUDE, LONGITUDE
     # VOLT_CLASS values: "UNDER 100", "100-161", "220-287", "345", "500", "735 AND ABOVE", "NOT AVAILABLE"
-    notes: "May require ArcGIS account for bulk download; API queries work without auth"
+    notes: "Migrated to services2 server Aug 2025. No auth required for queries."
 
   # Electric Power Transmission Lines
   transmission_lines:
-    base_url: "https://services1.arcgis.com/Hp6G80Pky0om6HgQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0"
+    base_url: "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Power_Transmission_Lines/FeatureServer/0"
     query_path: "/query"
     format: "geojson"
     # Key fields: OWNER, VOLTAGE, VOLT_CLASS, SUB_1, SUB_2, STATUS, SHAPE_Length
     # VOLT_CLASS: "UNDER 100", "100-161", "220-287", "345", "500", "735 AND ABOVE", "DC", "NOT AVAILABLE"
+    notes: "Confirmed working — data last updated Aug 2025, schema Nov 2025"
 
 fema:
   # National Flood Hazard Layer

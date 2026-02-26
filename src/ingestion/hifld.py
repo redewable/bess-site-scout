@@ -17,13 +17,15 @@ from ..utils.geo import geojson_to_geodataframe, WGS84
 logger = logging.getLogger(__name__)
 
 # HIFLD ArcGIS Feature Service URLs
+# NOTE: HIFLD migrated from services1 (Hp6G80Pky0om6HgQ) to services2 (FiaPA4ga0iQKduv3)
+#       in August 2025. Old URLs are dead. Updated Feb 2026.
 SUBSTATIONS_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om6HgQ/arcgis/rest/services/"
-    "Electric_Substations/FeatureServer/0"
+    "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/"
+    "US_Electric_Substations/FeatureServer/0"
 )
 TRANSMISSION_LINES_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om6HgQ/arcgis/rest/services/"
-    "Electric_Power_Transmission_Lines/FeatureServer/0"
+    "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/"
+    "US_Electric_Power_Transmission_Lines/FeatureServer/0"
 )
 
 # HIFLD voltage class mapping

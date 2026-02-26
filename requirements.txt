@@ -1,0 +1,33 @@
+# Core
+requests>=2.31.0
+aiohttp>=3.9.0
+asyncio-throttle>=1.0.2
+
+# Geospatial
+geopandas>=0.14.0
+shapely>=2.0.0
+pyproj>=3.6.0
+geopy>=2.4.0
+folium>=0.15.0
+rtree>=1.1.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.26.0
+
+# Configuration
+pyyaml>=6.0.0
+python-dotenv>=1.0.0
+
+# Caching & Storage
+diskcache>=5.6.0
+sqlalchemy>=2.0.0
+geoalchemy2>=0.14.0
+
+# Export & Reporting
+openpyxl>=3.1.0
+jinja2>=3.1.0
+matplotlib>=3.8.0
+
+# Logging
+rich>=13.7.0

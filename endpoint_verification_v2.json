@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-02-26T17:07:29.970966",
+  "results": [
+    {
+      "name": "HIFLD Substations",
+      "ok": true,
+      "detail": "3 features via json + 1=1"
+    },
+    {
+      "name": "HIFLD Transmission Lines",
+      "ok": true,
+      "detail": "3 features returned"
+    },
+    {
+      "name": "FEMA NFHL",
+      "ok": true,
+      "detail": "3 features returned"
+    },
+    {
+      "name": "EPA ECHO",
+      "ok": true,
+      "detail": "Got response (1 keys)"
+    },
+    {
+      "name": "USFWS Critical Habitat",
+      "ok": true,
+      "detail": "3 features returned"
+    },
+    {
+      "name": "USFWS NWI Wetlands",
+      "ok": false,
+      "detail": "0 features"
+    },
+    {
+      "name": "TCEQ LPST",
+      "ok": false,
+      "detail": "400 Client Error: Bad Request for url: https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/serv \u2014 covered by EPA ECHO fallback"
+    }
+  ]
+}

@@ -298,7 +298,8 @@ class EPAClient(APIClient):
 class ECHOClient(APIClient):
     """Client for EPA ECHO (Enforcement & Compliance History Online)."""
 
-    BASE_URL = "https://echo.epa.gov/api"
+    # NOTE: ECHO migrated from echo.epa.gov/api to echodata.epa.gov — updated Feb 2026
+    BASE_URL = "https://echodata.epa.gov/echo"
 
     def get_facilities(
         self,

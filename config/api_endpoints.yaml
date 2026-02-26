@@ -1,20 +1,21 @@
 # =============================================================================
 # BESS Site Scout — API Endpoints Reference
 # All endpoints are free/public unless noted
+# Last verified: February 26, 2026
 # =============================================================================
 
 hifld:
-  # NOTE: HIFLD migrated from services1.arcgis.com/Hp6G80Pky0om6HgQ (dead Aug 2025)
-  #        to services2.arcgis.com/FiaPA4ga0iQKduv3 — updated Feb 2026
+  # NOTE: HIFLD portal shut down Aug 2025. Transmission lines on services2.
+  #       Substations NOT on services2 — using Rutgers MARCO mirror (MapServer).
 
   # Electric Substations
   substations:
-    base_url: "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Substations/FeatureServer/0"
+    base_url: "https://oceandata.rad.rutgers.edu/arcgis/rest/services/RenewableEnergy/HIFLD_Electric_SubstationsTransmissionLines/MapServer/0"
     query_path: "/query"
     format: "geojson"
-    # Key fields: NAME, CITY, STATE, ZIP, TYPE, STATUS, OWNER, MAX_VOLT, MIN_VOLT, LATITUDE, LONGITUDE
-    # VOLT_CLASS values: "UNDER 100", "100-161", "220-287", "345", "500", "735 AND ABOVE", "NOT AVAILABLE"
-    notes: "Migrated to services2 server Aug 2025. No auth required for queries."
+    type: "MapServer"
+    # Key fields: NAME, CITY, STATE, ZIP, TYPE, STATUS, COUNTY, MAX_VOLT, LATITUDE, LONGITUDE
+    notes: "Rutgers MARCO mirror of HIFLD data. MapServer (not FeatureServer)."
 
   # Electric Power Transmission Lines
   transmission_lines:
@@ -22,14 +23,14 @@ hifld:
     query_path: "/query"
     format: "geojson"
     # Key fields: OWNER, VOLTAGE, VOLT_CLASS, SUB_1, SUB_2, STATUS, SHAPE_Length
-    # VOLT_CLASS: "UNDER 100", "100-161", "220-287", "345", "500", "735 AND ABOVE", "DC", "NOT AVAILABLE"
     notes: "Confirmed working — data last updated Aug 2025, schema Nov 2025"
 
 fema:
   # National Flood Hazard Layer
   nfhl:
-    base_url: "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer"
-    flood_zones_layer: 28  # S_Fld_Haz_Ar — Flood Hazard Zones
+    # NOTE: Migrated from /gis/nfhl/rest/ to /arcgis/rest/ — updated Feb 2026
+    base_url: "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"
+    flood_zones_layer: 28  # S_Fld_Haz_Ar — Flood Hazard Zones (confirmed)
     query_path: "/28/query"
     format: "geojson"
     # Key fields: FLD_ZONE, ZONE_SUBTY, SFHA_TF, STATIC_BFE
@@ -37,10 +38,11 @@ fema:
 
 epa:
   # Envirofacts Data Service API
+  # NOTE: Migrated from enviro.epa.gov to data.epa.gov — but returning 500 errors
+  #       as of Feb 2026. SEMS queries broken. Using ArcGIS spatial services instead.
   envirofacts:
-    base_url: "https://enviro.epa.gov/enviro/efservice"
-    # Table query format: /{program}.{table}/{column}/{operator}/{value}/{format}
-    # Example: /sems.sems_active_sites/state_code/TX/json
+    base_url: "https://data.epa.gov/efservice"
+    status: "BROKEN — 500 errors on SEMS queries as of Feb 2026"
     programs:
       sems: "sems.sems_active_sites"           # Superfund/NPL
       rcra_tsd: "rcrainfo.rcra_br_lu_subpart"   # RCRA TSD facilities
@@ -50,47 +52,40 @@ epa:
 
   # ECHO — Enforcement & Compliance
   echo:
-    base_url: "https://echo.epa.gov/api"
+    # NOTE: Migrated from echo.epa.gov/api to echodata.epa.gov — updated Feb 2026
+    base_url: "https://echodata.epa.gov/echo"
     facilities_path: "/echo_rest_services.get_facilities"
     # Params: p_st=TX, p_lat, p_long, p_radius (miles)
     format: "json"
+    notes: "Confirmed working Feb 2026"
 
   # Facility Registry Service (for lat/long lookups)
   frs:
-    base_url: "https://enviro.epa.gov/enviro/efservice/frs.frs_program_facility"
+    base_url: "https://data.epa.gov/efservice/frs.frs_program_facility"
     format: "json"
 
 tceq:
   # TCEQ GIS Data Hub (ArcGIS Online)
   gis_hub_base: "https://gis-tceq.opendata.arcgis.com"
+  arcgis_server: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/"
+  # NOTE: TCEQ has 652 services. LPST/PST service names changed — need discovery.
+  #       Browse directory at arcgis_server URL above with ?f=json to find current names.
 
   # Leaking Petroleum Storage Tanks
   lpst:
     base_url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/LPST_Points/FeatureServer/0"
     query_path: "/query"
     format: "geojson"
+    status: "BROKEN — 'Invalid URL' as of Feb 2026. Service renamed."
 
   # Petroleum Storage Tanks (UST/AST)
   pst:
     base_url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/PetroleumStorageTanks/FeatureServer/0"
     query_path: "/query"
     format: "geojson"
+    status: "BROKEN — 'Invalid URL' as of Feb 2026. Service renamed."
 
-  # Industrial & Hazardous Waste
-  ihw:
-    base_url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services"
-    notes: "Check TCEQ GIS Hub for current service name"
-
-  # Municipal Solid Waste
-  msw:
-    base_url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services"
-    notes: "Check TCEQ GIS Hub for current service name"
-
-  # Groundwater Contamination
-  groundwater:
-    notes: "Available through TCEQ GIS viewers — may need to scrape or use ArcGIS services"
-
-  # Raw data downloads (CSV/Excel)
+  # Raw data downloads (CSV/Excel) — fallback if ArcGIS services are unavailable
   raw_downloads:
     pst_data: "https://www.tceq.texas.gov/agency/data/lookup-data/pst-datasets-records.html"
     ihw_data: "https://www.tceq.texas.gov/agency/data/lookup-data/download-data.html"
@@ -102,21 +97,20 @@ usfws:
     rest_service: "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer"
     wetlands_layer: 0
     query_path: "/0/query"
-    wms_url: "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/services/Wetlands/MapServer/WMSServer"
-    download_by_state: "https://www.fws.gov/program/national-wetlands-inventory/download-state-wetlands-data"
     format: "geojson"
+    notes: "Server is slow — may timeout. Increase timeout to 60s."
 
   # Critical Habitat for Threatened & Endangered Species
   critical_habitat:
-    base_url: "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_HQ_ES_Critical_Habitat/FeatureServer/0"
+    # NOTE: Renamed from FWS_HQ_ES_Critical_Habitat — updated Feb 2026
+    base_url: "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/USFWS_Critical_Habitat/FeatureServer/0"
     query_path: "/query"
     format: "geojson"
+    notes: "Confirmed working Feb 2026"
 
 rrc:
   # Texas Railroad Commission — Oil & Gas
-  # Note: RRC GIS data is primarily through their viewer; API access is limited
   gis_viewer: "https://www.rrc.texas.gov/resource-center/research/gis-viewer/"
-  # Well data can be downloaded in bulk
   well_data: "https://www.rrc.texas.gov/resource-center/research/data-sets-available-for-download/"
   notes: "May need to download bulk datasets and filter locally"
 
@@ -128,7 +122,7 @@ usda:
     format: "json"
 
 eia:
-  # US Energy Atlas (validation layer — same HIFLD data)
+  # US Energy Atlas
   energy_atlas:
     base_url: "https://services7.arcgis.com/FGr1D95XCGALKXqM/arcgis/rest/services"
     transmission_lines: "/Electric_Power_Transmission_Lines/FeatureServer/0"
@@ -141,23 +135,3 @@ ercot:
   transmission: "https://www.ercot.com/gridinfo/transmission"
   gis_report: "https://www.ercot.com/mp/data-products/data-product-details?id=PG7-200-ER"
   notes: "GIS report requires MIS login; public maps available without auth"
-
-# --- ArcGIS Query Patterns ---
-# Most HIFLD/FEMA/TCEQ/USFWS endpoints use the same ArcGIS REST query pattern:
-#
-# GET {base_url}/query?
-#   where=STATE='TX' AND VOLT_CLASS='345'
-#   &outFields=*
-#   &geometry={xmin},{ymin},{xmax},{ymax}
-#   &geometryType=esriGeometryEnvelope
-#   &spatialRel=esriSpatialRelIntersects
-#   &f=geojson
-#   &resultRecordCount=1000
-#   &resultOffset=0
-#
-# For point-radius queries:
-#   &geometry={lon},{lat}
-#   &geometryType=esriGeometryPoint
-#   &distance={radius_meters}
-#   &units=esriSRUnit_Meter
-#   &spatialRel=esriSpatialRelIntersects

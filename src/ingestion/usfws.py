@@ -20,9 +20,10 @@ NWI_URL = (
     "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/"
     "Wetlands/MapServer/0"
 )
+# NOTE: Critical habitat service renamed — updated Feb 2026
 CRITICAL_HABITAT_URL = (
     "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/"
-    "FWS_HQ_ES_Critical_Habitat/FeatureServer/0"
+    "USFWS_Critical_Habitat/FeatureServer/0"
 )
 
 

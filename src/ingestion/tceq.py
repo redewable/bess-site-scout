@@ -19,17 +19,26 @@ from ..utils.geo import geojson_to_geodataframe, haversine_distance
 logger = logging.getLogger(__name__)
 
 # TCEQ ArcGIS service URLs
+# NOTE (Feb 2026): The KTcxiTD9dsQw4r7Z ArcGIS server is actually TxDOT, not TCEQ.
+# TCEQ previously cross-listed LPST/PST services there, but they've been removed.
+# These URLs are BROKEN. The module will gracefully skip with warnings.
+# EPA ECHO covers most of the same facilities (petroleum storage, hazardous waste).
+# TODO: Find new TCEQ GIS endpoints or switch to TCEQ CSV bulk downloads.
+#       Check: https://gis-tceq.opendata.arcgis.com
+#       Bulk: https://www.tceq.texas.gov/agency/data/lookup-data/pst-datasets-records.html
 TCEQ_SERVICES = {
     "lpst": {
         "url": "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/LPST_Points/FeatureServer/0",
         "name": "Leaking Petroleum Storage Tanks",
+        "verified": False,
+        "status": "BROKEN — service removed from TxDOT ArcGIS server",
     },
     "pst": {
         "url": "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/PetroleumStorageTanks/FeatureServer/0",
         "name": "Petroleum Storage Tanks (UST/AST)",
+        "verified": False,
+        "status": "BROKEN — service removed from TxDOT ArcGIS server",
     },
-    # Note: IHW and MSW service URLs need to be verified from TCEQ GIS Hub
-    # They change periodically. Check: https://gis-tceq.opendata.arcgis.com
     "ihw": {
         "url": "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/IHW_Facilities/FeatureServer/0",
         "name": "Industrial & Hazardous Waste",

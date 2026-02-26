@@ -16,12 +16,13 @@ from ..utils.geo import geojson_to_geodataframe, WGS84
 
 logger = logging.getLogger(__name__)
 
-# HIFLD ArcGIS Feature Service URLs
-# NOTE: HIFLD migrated from services1 (Hp6G80Pky0om6HgQ) to services2 (FiaPA4ga0iQKduv3)
-#       in August 2025. Old URLs are dead. Updated Feb 2026.
+# HIFLD ArcGIS Service URLs
+# NOTE: HIFLD portal shut down Aug 2025. Transmission lines migrated to services2.
+#       Substations NOT on services2 — using Rutgers MARCO mirror (MapServer).
+#       Updated Feb 2026.
 SUBSTATIONS_URL = (
-    "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/"
-    "US_Electric_Substations/FeatureServer/0"
+    "https://oceandata.rad.rutgers.edu/arcgis/rest/services/RenewableEnergy/"
+    "HIFLD_Electric_SubstationsTransmissionLines/MapServer/0"
 )
 TRANSMISSION_LINES_URL = (
     "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/"
@@ -63,29 +64,72 @@ class HIFLDIngestor:
         """
         Fetch all substations in Texas matching target voltage range.
 
+        NOTE: The Rutgers MapServer mirror doesn't support WHERE clauses on
+        STATE or VOLT_CLASS fields. We use a Texas bounding box as a spatial
+        filter, then filter STATE and voltage client-side.
+
         Returns GeoDataFrame with columns:
             NAME, CITY, STATE, ZIP, TYPE, STATUS, OWNER,
             MAX_VOLT, MIN_VOLT, VOLT_CLASS, LATITUDE, LONGITUDE, geometry
         """
         logger.info("Fetching Texas substations from HIFLD...")
 
-        voltage_clause = self._build_voltage_where_clause()
-        where = f"STATE = 'TX' AND STATUS = 'IN SERVICE' AND {voltage_clause}"
+        # Texas bounding box — spatial filter works on MapServer
+        tx_bbox = {
+            "xmin": -106.65,
+            "ymin": 25.84,
+            "xmax": -93.51,
+            "ymax": 36.50,
+            "spatialReference": {"wkid": 4326},
+        }
 
         geojson = self.client.query_features(
             service_url=SUBSTATIONS_URL,
-            where=where,
+            where="1=1",  # MapServer may not support complex WHERE; filter client-side
             out_fields="*",
+            geometry=tx_bbox,
+            geometry_type="esriGeometryEnvelope",
             cache_hours=self.cache_hours,
         )
 
         gdf = geojson_to_geodataframe(geojson)
 
         if gdf.empty:
-            logger.warning("No substations found matching criteria")
+            logger.warning("No substations found in Texas bounding box")
             return gdf
 
-        logger.info(f"Found {len(gdf)} Texas substations in target voltage range")
+        logger.info(f"Fetched {len(gdf)} substations in Texas bounding box")
+
+        # Client-side filter: STATE = TX (in case bbox catches border areas)
+        if "STATE" in gdf.columns:
+            gdf = gdf[gdf["STATE"] == "TX"].copy()
+            logger.info(f"Filtered to {len(gdf)} Texas substations")
+
+        # Client-side filter: STATUS = IN SERVICE
+        if "STATUS" in gdf.columns:
+            gdf = gdf[gdf["STATUS"] == "IN SERVICE"].copy()
+            logger.info(f"Filtered to {len(gdf)} in-service substations")
+
+        # Client-side filter: target voltage classes
+        target_classes = set(
+            self.grid_config.get("hifld_voltage_classes", ["100-161", "220-287", "345"])
+        )
+        if "VOLT_CLASS" in gdf.columns:
+            gdf = gdf[gdf["VOLT_CLASS"].isin(target_classes)].copy()
+            logger.info(f"Filtered to {len(gdf)} substations in target voltage range")
+        elif "MAX_VOLT" in gdf.columns:
+            # Fallback: filter by numeric MAX_VOLT if VOLT_CLASS not available
+            min_kv = self.grid_config.get("min_voltage_kv", 100)
+            max_kv = self.grid_config.get("max_voltage_kv", 500)
+            gdf["MAX_VOLT"] = pd.to_numeric(gdf["MAX_VOLT"], errors="coerce")
+            gdf = gdf[(gdf["MAX_VOLT"] >= min_kv) & (gdf["MAX_VOLT"] <= max_kv)].copy()
+            logger.info(f"Filtered to {len(gdf)} substations by MAX_VOLT ({min_kv}-{max_kv}kV)")
+
+        if gdf.empty:
+            logger.warning("No substations found matching criteria after filtering")
+            return gdf
+
+        logger.info(f"Found {len(gdf)} qualifying Texas substations")
 
         # Add convenience columns
         if "LATITUDE" in gdf.columns and "LONGITUDE" in gdf.columns:

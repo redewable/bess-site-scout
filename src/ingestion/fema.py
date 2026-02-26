@@ -14,8 +14,9 @@ from ..utils.geo import geojson_to_geodataframe, point_buffer_bbox
 
 logger = logging.getLogger(__name__)
 
-NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer"
-FLOOD_ZONES_LAYER = 28  # S_Fld_Haz_Ar
+# NOTE: FEMA NFHL migrated from /gis/nfhl/rest/ to /arcgis/rest/ — updated Feb 2026
+NFHL_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"
+FLOOD_ZONES_LAYER = 28  # S_Fld_Haz_Ar (Flood Hazard Zones) — confirmed working
 
 
 class FEMAIngestor:

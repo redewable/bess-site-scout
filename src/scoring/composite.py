@@ -1,8 +1,8 @@
 """
 Composite Scoring — Final Site Ranking
 
-Combines grid proximity, environmental risk, land cost,
-and parcel characteristics into a single composite score.
+Combines grid proximity, environmental risk, land cost, parcel size,
+flood risk, grid density, and solar resource into a single composite score.
 """
 
 import logging
@@ -29,6 +29,8 @@ class CompositeScorer:
         price_per_acre: float,
         parcel_acres: float,
         flood_risk_level: str = "low",
+        grid_density_score: float = 50.0,
+        solar_score: float = 50.0,
     ) -> Dict[str, Any]:
         """
         Generate composite score for a candidate site.
@@ -47,13 +49,11 @@ class CompositeScorer:
         sub_scores = {}
 
         # 1. Proximity to Substation (closer = better)
-        # Score: 100 at 0mi, ~50 at 1.5mi, ~0 at 5mi
-        w = self.weights.get("proximity_to_substation", 0.30)
+        w = self.weights.get("proximity_to_substation", 0.25)
         prox_score = max(0, 100 * math.exp(-0.5 * distance_to_substation_mi))
         sub_scores["proximity"] = {"score": round(prox_score, 1), "weight": w}
 
         # 2. Voltage Class (higher = better for BESS)
-        # 345kV = 100, 230kV = 75, 161kV = 50
         w = self.weights.get("voltage_class", 0.15)
         if substation_voltage_kv >= 345:
             volt_score = 100
@@ -66,33 +66,40 @@ class CompositeScorer:
         sub_scores["voltage"] = {"score": volt_score, "weight": w}
 
         # 3. Environmental Risk (already 0-100, higher = cleaner)
-        w = self.weights.get("environmental_risk", 0.25)
+        w = self.weights.get("environmental_risk", 0.20)
         sub_scores["environmental"] = {"score": round(environmental_score, 1), "weight": w}
 
         # 4. Land Cost (lower = better)
-        # Score: 100 at $0/ac, ~50 at $15k/ac, ~0 at $50k/ac
-        w = self.weights.get("land_cost", 0.15)
+        w = self.weights.get("land_cost", 0.10)
         max_price = self.config.get("real_estate", {}).get("max_price_per_acre", 50000)
         cost_score = max(0, 100 * (1 - price_per_acre / max_price))
         sub_scores["land_cost"] = {"score": round(cost_score, 1), "weight": w}
 
         # 5. Parcel Size (closer to ideal = better)
-        # Gaussian centered on ideal_acres
-        w = self.weights.get("parcel_size", 0.10)
+        w = self.weights.get("parcel_size", 0.05)
         size_diff = abs(parcel_acres - self.ideal_acres) / self.ideal_acres
         size_score = 100 * math.exp(-2 * size_diff ** 2)
         sub_scores["parcel_size"] = {"score": round(size_score, 1), "weight": w}
 
         # 6. Flood Risk
         w = self.weights.get("flood_risk", 0.05)
-        flood_scores = {"low": 100, "moderate": 50, "undetermined": 30, "high": 0, "unknown": 50}
+        flood_scores = {
+            "low": 100, "moderate": 50, "undetermined": 30,
+            "high": 0, "unknown": 50,
+        }
         flood_score = flood_scores.get(flood_risk_level, 50)
         sub_scores["flood_risk"] = {"score": flood_score, "weight": w}
 
+        # 7. Grid Density (more nearby generation = better interconnection)
+        w = self.weights.get("grid_density", 0.10)
+        sub_scores["grid_density"] = {"score": round(grid_density_score, 1), "weight": w}
+
+        # 8. Solar Resource (higher GHI = better co-location potential)
+        w = self.weights.get("solar_resource", 0.10)
+        sub_scores["solar_resource"] = {"score": round(solar_score, 1), "weight": w}
+
         # Weighted composite
-        composite = sum(
-            s["score"] * s["weight"] for s in sub_scores.values()
-        )
+        composite = sum(s["score"] * s["weight"] for s in sub_scores.values())
         composite = round(composite, 1)
 
         # Grade
@@ -118,13 +125,9 @@ class CompositeScorer:
         Rank a list of scored sites by composite score.
         Filters out eliminated sites and sorts descending.
         """
-        # Remove eliminated
         viable = [s for s in scored_sites if s.get("grade") != "ELIMINATED"]
-
-        # Sort by composite score descending
         viable.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
 
-        # Add rank
         for i, site in enumerate(viable, 1):
             site["rank"] = i
 

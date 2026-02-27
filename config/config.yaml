@@ -14,8 +14,8 @@ grid:
     - "100-161"
     - "220-287"
     - "345"
-  # Geographic filter — Texas ERCOT territory
-  state_filter: "TX"
+  # Geographic filter — state code (TX, CA, etc.) or "ALL" for nationwide
+  state_filter: "ALL"
   # Substation search radius from transmission lines (miles)
   substation_buffer_miles: 2.0
 
@@ -76,50 +76,54 @@ environmental:
 
   # USFWS
   wetlands:
-    # Flag if NWI wetlands intersect parcel
     flag_on_intersection: true
-    # Eliminate if wetlands cover more than this % of parcel
     max_wetland_pct: 50
 
   endangered_species:
-    # Flag if critical habitat intersects parcel
     flag_on_intersection: true
-    # Hard eliminate if critical habitat
-    eliminate: false  # Set true to auto-reject
+    eliminate: false
 
   # TX Railroad Commission
   rrc:
-    well_radius: 0.25        # Oil/gas wells
-    pipeline_radius: 0.1     # Pipeline easements
+    well_radius: 0.25
+    pipeline_radius: 0.1
+
+# --- Grid & Renewables Assessment ---
+grid_assessment:
+  # EIA power plant search radius (miles)
+  plant_search_radius: 15.0
+  # NREL solar resource — co-location analysis
+  solar_resource: true
 
 # --- Scoring Weights ---
 scoring:
   # Weights must sum to 1.0
-  proximity_to_substation: 0.30  # Closer = better
+  proximity_to_substation: 0.25  # Closer = better
   voltage_class: 0.15            # Higher voltage = better
-  environmental_risk: 0.25       # Lower risk = better
-  land_cost: 0.15                # Lower cost = better
-  parcel_size: 0.10              # Closer to ideal size = better
+  environmental_risk: 0.20       # Lower risk = better
+  land_cost: 0.10                # Lower cost = better
+  parcel_size: 0.05              # Closer to ideal size = better
   flood_risk: 0.05               # Lower risk = better
+  grid_density: 0.10             # More nearby generation = better infra
+  solar_resource: 0.10           # Higher GHI = better co-location
 
   # Ideal parcel size for scoring (acres)
   ideal_parcel_acres: 40
 
 # --- Output ---
 output:
-  # Directory for generated reports
   report_dir: "./output"
-  # Generate interactive Folium map
   generate_map: true
-  # Generate Excel spreadsheet
   generate_excel: true
-  # Generate PDF summary
   generate_pdf: false
-  # Top N results to include in reports
-  top_n_results: 50
+  top_n_results: 100
 
 # --- API Keys (optional — most sources are free) ---
 api_keys:
+  # NREL Developer API (free: https://developer.nrel.gov/)
+  nrel: "DEMO_KEY"
+  # EIA Open Data (free: https://www.eia.gov/opendata/)
+  eia: ""
   # RentCast API (freemium — 50 calls/month free)
   rentcast: ""
   # ATTOM Data (premium — if you want parcel boundaries)
@@ -128,9 +132,7 @@ api_keys:
 # --- Cache Settings ---
 cache:
   enabled: true
-  # Cache directory
   directory: "./data/cache"
-  # Cache expiry in hours
-  grid_data_expiry_hours: 720      # 30 days — grid data rarely changes
+  grid_data_expiry_hours: 720      # 30 days
   environmental_expiry_hours: 168  # 7 days
-  real_estate_expiry_hours: 24     # 1 day — listings change fast
+  real_estate_expiry_hours: 24     # 1 day

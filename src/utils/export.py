@@ -193,12 +193,35 @@ def export_to_map(
     return str(filepath)
 
 
+def _flatten_dict(d: dict, prefix: str = "", out: dict = None) -> dict:
+    """Flatten a nested dict into dot-separated keys for GeoJSON properties."""
+    if out is None:
+        out = {}
+    for k, v in d.items():
+        key = f"{prefix}_{k}" if prefix else k
+        if isinstance(v, dict):
+            _flatten_dict(v, prefix=key, out=out)
+        elif isinstance(v, list):
+            out[key] = "; ".join(str(item) for item in v) if v else ""
+        elif isinstance(v, (bool,)):
+            out[key] = v
+        elif v is not None:
+            out[key] = v
+    return out
+
+
 def export_geojson(
     results: List[Dict[str, Any]],
     output_dir: str = "./output",
     filename: str = None,
 ) -> str:
-    """Export results as GeoJSON for use in external GIS tools."""
+    """
+    Export results as GeoJSON for the web dashboard.
+
+    Flattens all nested screening data (sub_scores, environmental, flood, EPA,
+    TCEQ, USFWS, EIA, NREL) into flat properties so the dashboard can display
+    full scoring breakdowns and screening details.
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -213,13 +236,21 @@ def export_geojson(
         lat = r.get("lat")
         lon = r.get("lon")
         if lat and lon:
+            props = {}
+            for k, v in r.items():
+                if k in ("lat", "lon", "geometry"):
+                    continue
+                if isinstance(v, dict):
+                    _flatten_dict(v, prefix=k, out=props)
+                elif isinstance(v, list):
+                    props[k] = "; ".join(str(item) for item in v) if v else ""
+                else:
+                    props[k] = v
+
             feature = {
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    k: v for k, v in r.items()
-                    if k not in ("lat", "lon", "geometry") and not isinstance(v, (dict, list))
-                },
+                "properties": props,
             }
             features.append(feature)
 
@@ -228,5 +259,5 @@ def export_geojson(
     with open(filepath, "w") as f:
         json.dump(geojson, f, indent=2)
 
-    logger.info(f"GeoJSON exported to {filepath}")
+    logger.info(f"GeoJSON exported to {filepath} ({len(features)} features)")
     return str(filepath)

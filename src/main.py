@@ -5,8 +5,9 @@ Coordinates the full site prospecting pipeline:
 1. Pull grid infrastructure data (substations + transmission lines)
 2. For each qualifying substation, search for nearby parcels
 3. Screen each candidate against environmental databases
-4. Score and rank all candidates
-5. Generate reports and maps
+4. Assess grid density and solar resource
+5. Score and rank all candidates
+6. Generate reports and maps
 """
 
 import logging
@@ -49,13 +50,18 @@ def run_pipeline(config: dict, test_mode: bool = False):
     from .ingestion.epa import EPAIngestor
     from .ingestion.tceq import TCEQIngestor
     from .ingestion.usfws import USFWSIngestor
+    from .ingestion.eia import EIAIngestor
+    from .ingestion.nrel import NRELIngestor
     from .scoring.environmental import EnvironmentalScorer
     from .scoring.composite import CompositeScorer
     from .utils.export import export_to_excel, export_to_map, export_geojson
 
+    state_filter = config.get("grid", {}).get("state_filter", "ALL")
+
     logger.info("=" * 60)
     logger.info("BESS Site Scout — Starting Pipeline")
     logger.info(f"Timestamp: {datetime.now().isoformat()}")
+    logger.info(f"Coverage: {'Nationwide (CONUS)' if state_filter == 'ALL' else state_filter}")
     logger.info("=" * 60)
 
     # =========================================================
@@ -86,36 +92,31 @@ def run_pipeline(config: dict, test_mode: bool = False):
     # =========================================================
     logger.info("\n🏠 PHASE 2: Searching for Nearby Parcels...")
 
-    # For now, we use the substation locations themselves as candidate sites.
-    # In production, this is where you'd integrate:
-    #   - County CAD parcel data
-    #   - Land listing APIs (RentCast, LandWatch, etc.)
-    #   - Custom parcel boundaries
-    #
-    # The environmental screening below runs against each substation point.
-    # When real estate data is integrated, it will run against each
-    # candidate parcel near each substation.
-
     search_radius = config.get("real_estate", {}).get("search_radius_miles", 3.0)
     logger.info(f"  Search radius: {search_radius} miles per substation")
-    logger.info(f"  ⚠️  Real estate data integration pending — using substation locations as proxies")
+    logger.info(
+        f"  ⚠️  Real estate data integration pending — using substation locations as proxies"
+    )
 
     # =========================================================
-    # PHASE 3: Environmental Screening
+    # PHASE 3: Environmental Screening + Grid Assessment
     # =========================================================
-    logger.info("\n🔬 PHASE 3: Running Environmental Screening...")
+    logger.info("\n🔬 PHASE 3: Running Environmental Screening & Grid Assessment...")
 
     fema_ingestor = FEMAIngestor(config)
     epa_ingestor = EPAIngestor(config)
     tceq_ingestor = TCEQIngestor(config)
     usfws_ingestor = USFWSIngestor(config)
+    eia_ingestor = EIAIngestor(config)
+    nrel_ingestor = NRELIngestor(config)
     env_scorer = EnvironmentalScorer(config)
     composite_scorer = CompositeScorer(config)
 
     all_results = []
+    total = len(substations)
 
-    for idx, sub in substations.iterrows():
-        sub_name = sub.get("NAME", f"Substation_{idx}")
+    for idx, (row_idx, sub) in enumerate(substations.iterrows()):
+        sub_name = sub.get("NAME", f"Substation_{row_idx}")
         lat = sub.get("lat", sub.geometry.y if sub.geometry else None)
         lon = sub.get("lon", sub.geometry.x if sub.geometry else None)
 
@@ -123,11 +124,20 @@ def run_pipeline(config: dict, test_mode: bool = False):
             logger.warning(f"  Skipping {sub_name} — no coordinates")
             continue
 
-        logger.info(f"\n  🔍 Screening: {sub_name} ({lat:.4f}, {lon:.4f})")
+        logger.info(
+            f"\n  [{idx+1}/{total}] 🔍 Screening: {sub_name} ({lat:.4f}, {lon:.4f})"
+        )
 
         # Determine voltage for scoring
         volt_class = sub.get("VOLT_CLASS", "")
-        if "345" in str(volt_class):
+        max_kv = sub.get("max_voltage_kv", 0)
+        if max_kv >= 345:
+            voltage_kv = 345
+        elif max_kv >= 220:
+            voltage_kv = 230
+        elif max_kv >= 161:
+            voltage_kv = 161
+        elif "345" in str(volt_class):
             voltage_kv = 345
         elif "220" in str(volt_class) or "287" in str(volt_class):
             voltage_kv = 230
@@ -136,7 +146,7 @@ def run_pipeline(config: dict, test_mode: bool = False):
         else:
             voltage_kv = 138
 
-        # --- Run environmental screens ---
+        # --- Environmental screens ---
         try:
             fema_result = fema_ingestor.assess_flood_risk(lat, lon)
             logger.info(f"    FEMA: {fema_result['details']}")
@@ -168,28 +178,63 @@ def run_pipeline(config: dict, test_mode: bool = False):
             logger.warning(f"    USFWS query failed: {e}")
             usfws_result = {"eliminate": False, "risk_flags": []}
 
-        # --- Score ---
-        env_score = env_scorer.score_parcel(fema_result, epa_result, tceq_result, usfws_result)
+        # --- Grid density assessment ---
+        try:
+            eia_result = eia_ingestor.assess_grid_density(lat, lon)
+            logger.info(
+                f"    EIA: {eia_result['nearby_plants']} plants, "
+                f"{eia_result['nearby_capacity_mw']:.0f} MW nearby"
+            )
+        except Exception as e:
+            logger.warning(f"    EIA query failed: {e}")
+            eia_result = {"grid_density_score": 50, "risk_flags": []}
 
-        # For now, use placeholder values for real estate fields
-        # These get replaced when parcel data is integrated
+        # --- Solar resource ---
+        try:
+            nrel_result = nrel_ingestor.get_solar_resource(lat, lon)
+            logger.info(
+                f"    NREL: GHI={nrel_result['ghi_annual']} kWh/m²/day, "
+                f"co-location={nrel_result['co_location_potential']}"
+            )
+        except Exception as e:
+            logger.warning(f"    NREL query failed: {e}")
+            nrel_result = {"solar_score": 50, "ghi_annual": 0}
+
+        # --- Score ---
+        env_score = env_scorer.score_parcel(
+            fema_result, epa_result, tceq_result, usfws_result
+        )
+
         composite = composite_scorer.score_site(
-            distance_to_substation_mi=0.0,  # AT the substation for now
+            distance_to_substation_mi=0.0,
             substation_voltage_kv=voltage_kv,
             environmental_score=env_score["score"],
             environmental_eliminate=env_score["eliminate"],
-            price_per_acre=5000,  # Placeholder
-            parcel_acres=40,  # Placeholder
+            price_per_acre=5000,   # Placeholder
+            parcel_acres=40,       # Placeholder
             flood_risk_level=fema_result.get("risk_level", "unknown"),
+            grid_density_score=eia_result.get("grid_density_score", 50),
+            solar_score=nrel_result.get("solar_score", 50),
         )
 
-        # Compile result
+        # Compile result — include all enrichment fields from HIFLD
         result = {
             "substation_name": sub_name,
             "substation_voltage_kv": voltage_kv,
             "volt_class": volt_class,
             "lat": lat,
             "lon": lon,
+            "connected_lines": sub.get("connected_lines", 0),
+            "owner": sub.get("OWNER", ""),
+            "operator": sub.get("OPERATOR", ""),
+            "sub_status": sub.get("STATUS", ""),
+            "city": sub.get("CITY", ""),
+            "state": sub.get("STATE", ""),
+            "county": sub.get("COUNTY", ""),
+            "sub_type": sub.get("TYPE", ""),
+            "hifld_lines": sub.get("LINES", 0),
+            "max_volt": sub.get("MAX_VOLT", 0),
+            "min_volt": sub.get("MIN_VOLT", 0),
             "distance_to_substation_mi": 0.0,
             "composite_score": composite["composite_score"],
             "grade": composite["grade"],
@@ -199,11 +244,20 @@ def run_pipeline(config: dict, test_mode: bool = False):
             "epa": epa_result,
             "tceq": tceq_result,
             "usfws": usfws_result,
+            "eia": eia_result,
+            "nrel": nrel_result,
             "risk_flags": env_score.get("risk_flags", []),
+            "ghi_annual": nrel_result.get("ghi_annual", 0),
+            "solar_co_location": nrel_result.get("co_location_potential", "unknown"),
+            "nearby_generation_mw": eia_result.get("nearby_capacity_mw", 0),
         }
         all_results.append(result)
 
-        status = "❌ ELIMINATED" if composite["grade"] == "ELIMINATED" else f"✅ {composite['grade']} ({composite['composite_score']})"
+        status = (
+            "❌ ELIMINATED"
+            if composite["grade"] == "ELIMINATED"
+            else f"✅ {composite['grade']} ({composite['composite_score']})"
+        )
         logger.info(f"    Result: {status}")
 
     # =========================================================
@@ -212,7 +266,7 @@ def run_pipeline(config: dict, test_mode: bool = False):
     logger.info("\n📊 PHASE 4: Ranking & Generating Reports...")
 
     ranked = composite_scorer.rank_sites(all_results)
-    top_n = config.get("output", {}).get("top_n_results", 50)
+    top_n = config.get("output", {}).get("top_n_results", 100)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"TOP {min(top_n, len(ranked))} SITES:")
@@ -224,7 +278,8 @@ def run_pipeline(config: dict, test_mode: bool = False):
             f"Score: {site['composite_score']:5.1f} | "
             f"{site['substation_name'][:30]:30s} | "
             f"{site['volt_class']} | "
-            f"Env: {site['environmental']['grade']}"
+            f"Env: {site['environmental']['grade']} | "
+            f"GHI: {site.get('ghi_annual', 0):.1f}"
         )
 
     # Export
@@ -273,21 +328,28 @@ def main():
     """CLI entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="BESS Site Scout — Automated Site Prospecting")
+    parser = argparse.ArgumentParser(
+        description="BESS Site Scout — Automated Site Prospecting"
+    )
     parser.add_argument(
         "--config", "-c",
         default="config/config.yaml",
-        help="Path to config file (default: config/config.yaml)"
+        help="Path to config file (default: config/config.yaml)",
     )
     parser.add_argument(
         "--test", "-t",
         action="store_true",
-        help="Run in test mode (limit to 5 substations)"
+        help="Run in test mode (limit to 5 substations)",
     )
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
-        help="Enable debug logging"
+        help="Enable debug logging",
+    )
+    parser.add_argument(
+        "--state", "-s",
+        default=None,
+        help="Override state filter (e.g. TX, CA, ALL)",
     )
     args = parser.parse_args()
 
@@ -295,6 +357,11 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     config = load_config(args.config)
+
+    # CLI override for state
+    if args.state:
+        config.setdefault("grid", {})["state_filter"] = args.state
+
     run_pipeline(config, test_mode=args.test)
 
 

@@ -91,6 +91,60 @@ export interface Site {
   [key: string]: any
 }
 
+export interface GenerationPlant {
+  NAME: string
+  STATE: string
+  capacity_mw: number
+  fuel_category: string
+  TECH_DESC: string
+  NAICS_DESC: string
+  NET_GEN: number
+  STATUS: string
+  lat: number
+  lon: number
+  layer_type: 'power_plant'
+}
+
+export interface InterconnectionProject {
+  project_name: string
+  developer: string
+  fuel_type: string
+  fuel_category: string
+  capacity_mw: number
+  status: string
+  status_normalized: string
+  queue_date: string
+  poi_name: string
+  county: string
+  state: string
+  iso: string
+  lat: number | null
+  lon: number | null
+  layer_type: 'interconnection_queue'
+}
+
+export interface GenerationSummary {
+  plants: {
+    total: number
+    total_capacity_mw: number
+    fuel_mix: Record<string, { count: number; capacity_mw: number; pct: number }>
+  }
+  queues: {
+    total_projects: number
+    total_capacity_mw: number
+    by_fuel: Record<string, { count: number; capacity_mw: number; pct: number }>
+    by_iso: Record<string, { count: number; capacity_mw: number }>
+    by_status: Record<string, { count: number; capacity_mw: number }>
+  }
+  egrid: {
+    plant_count: number
+    clean_vs_dirty?: {
+      clean: { count: number; capacity_mw: number }
+      dirty: { count: number; capacity_mw: number }
+    }
+  }
+}
+
 export interface Meta {
   total_sites: number
   grades: Record<string, number>
@@ -101,4 +155,5 @@ export interface Meta {
   state_distribution: Record<string, number>
   generated: string
   filename: string
+  generation_summary?: GenerationSummary
 }

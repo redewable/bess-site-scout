@@ -88,6 +88,61 @@ environmental:
     well_radius: 0.25
     pipeline_radius: 0.1
 
+# --- Generation Assets ---
+# Tracks ALL generation assets: operating, planned, and queued
+generation_assets:
+  # EIA-860M — comprehensive US power plant inventory
+  eia:
+    enabled: true
+    # Status codes to include:
+    #   OP=Operating, SB=Standby, OA/OS=Out of service,
+    #   P=Planned, L=Reg approved, T/U=Under construction, V=Testing
+    include_statuses: ["OP", "SB", "TS", "OA", "OS", "P", "L", "T", "U", "V"]
+    # Radius for per-site nearby plant queries (miles)
+    search_radius_miles: 25
+
+  # ISO/RTO Interconnection Queues — proposed projects seeking grid access
+  interconnection_queues:
+    enabled: true
+    # ISOs to query (all 7 major US ISOs)
+    isos: ["ERCOT", "CAISO", "PJM", "MISO", "SPP", "NYISO", "ISONE"]
+    # Only include projects with these statuses
+    include_statuses: ["Active", "Under Study", "Facility Study", "IA Executed", "IA in Progress", "Under Construction"]
+
+  # EPA eGRID — emissions & generation data for existing plants
+  egrid:
+    enabled: true
+    data_year: 2022  # Latest available eGRID year
+
+# --- Market & Revenue Data ---
+# Wholesale electricity market data for BESS revenue modeling
+market_data:
+  lmp:
+    enabled: true
+    days_back: 30  # Days of LMP history to fetch
+    isos: ["ERCOT", "CAISO", "PJM", "MISO", "NYISO", "SPP"]
+  congestion:
+    enabled: true
+  capacity_markets:
+    enabled: true
+  ancillary_services:
+    enabled: true
+  curtailment:
+    enabled: true
+
+# --- Site Feasibility ---
+site_feasibility:
+  land_use:
+    enabled: true  # USGS NLCD 30m land cover
+  parcels:
+    enabled: true  # Regrid (free) + ATTOM (paid, optional)
+  utility_territories:
+    enabled: true  # HIFLD service territories
+  incentives:
+    enabled: true  # Federal ITC + state programs + energy communities
+  soil:
+    enabled: true  # USDA SSURGO soil data
+
 # --- Grid & Renewables Assessment ---
 grid_assessment:
   # EIA power plant search radius (miles)
@@ -123,11 +178,13 @@ api_keys:
   # NREL Developer API (free: https://developer.nrel.gov/)
   nrel: "DEMO_KEY"
   # EIA Open Data (free: https://www.eia.gov/opendata/)
-  eia: ""
+  eia: "4TZIfYW6RisbK2tvVioq6MRiLe7qdLVi5U8nMFM4"
   # RentCast API (freemium — 50 calls/month free)
   rentcast: ""
   # ATTOM Data (premium — if you want parcel boundaries)
   attom: ""
+  # PJM API key (free — for interconnection queue data)
+  pjm: ""
 
 # --- Cache Settings ---
 cache:

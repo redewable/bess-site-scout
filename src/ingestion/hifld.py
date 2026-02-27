@@ -226,6 +226,21 @@ class HIFLDIngestor:
 
                 name = str(name).strip()
 
+                # Filter out unnamed/placeholder substations
+                # These are just generic line endpoints, not real substations
+                name_upper = name.upper()
+                if (
+                    name_upper.startswith("UNKNOWN")
+                    or name_upper.startswith("UNK ")
+                    or name_upper == "UNK"
+                    or name_upper.startswith("TAP ")
+                    or name_upper.startswith("JUNCTION")
+                    or name_upper.startswith("JCT ")
+                    or name_upper.startswith("INTERCONNECT")
+                    or name_upper in ("N/A", "NA", "TBD", "UNNAMED", "GENERIC")
+                ):
+                    continue
+
                 if name not in subs_dict:
                     subs_dict[name] = {
                         "lat": lat,

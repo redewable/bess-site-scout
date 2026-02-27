@@ -4,13 +4,15 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import SiteTable from '@/components/SiteTable'
 import SiteDetail from '@/components/SiteDetail'
-import { Site, Meta } from '@/types'
+import { Site, Meta, GenerationPlant, InterconnectionProject } from '@/types'
 
 const SiteMap = dynamic(() => import('@/components/Map'), { ssr: false })
 
 export default function Dashboard() {
   const [sites, setSites] = useState<Site[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)
+  const [generationPlants, setGenerationPlants] = useState<GenerationPlant[]>([])
+  const [queueProjects, setQueueProjects] = useState<InterconnectionProject[]>([])
   const [selectedSite, setSelectedSite] = useState<Site | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +32,29 @@ export default function Dashboard() {
         }))
         setSites(parsed)
         setMeta(data.meta)
+
+        // Parse generation plant features
+        if (data.generationPlants?.features) {
+          const plants: GenerationPlant[] = data.generationPlants.features
+            .filter((f: any) => f.geometry)
+            .map((f: any) => ({
+              ...f.properties,
+              lat: f.geometry.coordinates[1],
+              lon: f.geometry.coordinates[0],
+            }))
+          setGenerationPlants(plants)
+        }
+
+        // Parse interconnection queue features
+        if (data.interconnectionQueue?.features) {
+          const projects: InterconnectionProject[] = data.interconnectionQueue.features
+            .map((f: any) => ({
+              ...f.properties,
+              lat: f.geometry?.coordinates?.[1] || null,
+              lon: f.geometry?.coordinates?.[0] || null,
+            }))
+          setQueueProjects(projects)
+        }
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -96,6 +121,12 @@ export default function Dashboard() {
           <StatCard label="Grade B" value={meta?.grades?.B || 0} color="text-lime-400" />
           <StatCard label="Avg Score" value={meta?.avg_score || 0} color="text-blue-400" />
           <StatCard label="Avg GHI" value={meta?.avg_ghi || 0} color="text-amber-400" unit="kWh/m&#178;/d" />
+          {generationPlants.length > 0 && (
+            <StatCard label="Gen Plants" value={generationPlants.length} color="text-purple-400" />
+          )}
+          {queueProjects.length > 0 && (
+            <StatCard label="Queue" value={queueProjects.length} color="text-cyan-400" />
+          )}
 
           {/* Grade bar */}
           <div className="flex h-5 rounded-full overflow-hidden w-32 bg-gray-800">
@@ -149,6 +180,8 @@ export default function Dashboard() {
                 sites={sites}
                 selectedSite={selectedSite}
                 onSiteSelect={handleSiteSelect}
+                generationPlants={generationPlants}
+                queueProjects={queueProjects}
               />
             </div>
           </div>

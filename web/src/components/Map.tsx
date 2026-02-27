@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import L from 'leaflet'
-import { Site } from '@/types'
+import { Site, GenerationPlant, InterconnectionProject } from '@/types'
 
 interface MapProps {
   sites: Site[]
   selectedSite: Site | null
   onSiteSelect: (site: Site) => void
+  generationPlants?: GenerationPlant[]
+  queueProjects?: InterconnectionProject[]
 }
 
 const GRADE_COLORS: Record<string, string> = {
@@ -18,9 +20,31 @@ const GRADE_COLORS: Record<string, string> = {
   F: '#991b1b',
 }
 
-export default function SiteMap({ sites, selectedSite, onSiteSelect }: MapProps) {
+// Fuel type colors for generation assets
+const FUEL_COLORS: Record<string, string> = {
+  'Solar': '#f59e0b',
+  'Wind': '#06b6d4',
+  'Natural Gas': '#ef4444',
+  'Coal': '#6b7280',
+  'Nuclear': '#a855f7',
+  'Hydro': '#3b82f6',
+  'Battery Storage': '#10b981',
+  'Pumped Storage': '#2563eb',
+  'Petroleum': '#92400e',
+  'Biomass': '#65a30d',
+  'Geothermal': '#dc2626',
+  'Hydrogen': '#14b8a6',
+  'Hybrid': '#8b5cf6',
+  'Hybrid (Solar+Storage)': '#d97706',
+  'Hybrid (Wind+Storage)': '#0891b2',
+  'Other': '#9ca3af',
+}
+
+export default function SiteMap({ sites, selectedSite, onSiteSelect, generationPlants, queueProjects }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const markersRef = useRef<L.CircleMarker[]>([])
+  const genLayerRef = useRef<L.LayerGroup | null>(null)
+  const queueLayerRef = useRef<L.LayerGroup | null>(null)
   const selectedMarkerRef = useRef<L.CircleMarker | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -57,7 +81,7 @@ export default function SiteMap({ sites, selectedSite, onSiteSelect }: MapProps)
 
     dark.addTo(map)
 
-    // Layer control
+    // Layer control — overlays added dynamically when data arrives
     const baseLayers: Record<string, L.TileLayer> = {
       'Dark': dark,
       'Satellite': satellite,
@@ -189,6 +213,141 @@ export default function SiteMap({ sites, selectedSite, onSiteSelect }: MapProps)
     })
   }, [selectedSite])
 
+  // Generation asset layers
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    // Clear old generation layers
+    if (genLayerRef.current) {
+      genLayerRef.current.remove()
+      genLayerRef.current = null
+    }
+
+    if (generationPlants && generationPlants.length > 0) {
+      const genGroup = L.layerGroup()
+
+      generationPlants.forEach((plant) => {
+        if (!plant.lat || !plant.lon) return
+        const fuel = plant.fuel_category || 'Other'
+        const color = FUEL_COLORS[fuel] || FUEL_COLORS['Other']
+        const mw = plant.capacity_mw || 0
+        const radius = mw >= 500 ? 5 : mw >= 100 ? 4 : 3
+
+        const marker = L.circleMarker([plant.lat, plant.lon], {
+          radius,
+          fillColor: color,
+          color: 'rgba(0,0,0,0.3)',
+          weight: 0.5,
+          opacity: 0.7,
+          fillOpacity: 0.5,
+        })
+
+        marker.bindPopup(`
+          <div style="font-family: -apple-system, sans-serif; min-width: 200px; color: #1a1a2e;">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px; border-bottom: 2px solid ${color}; padding-bottom: 3px;">
+              ${plant.NAME || 'Unknown Plant'}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; font-size: 11px;">
+              <span style="color: #666;">Fuel</span>
+              <span style="color: ${color}; font-weight: 600;">${fuel}</span>
+              <span style="color: #666;">Capacity</span>
+              <span>${mw ? Math.round(mw).toLocaleString() + ' MW' : 'N/A'}</span>
+              <span style="color: #666;">State</span>
+              <span>${plant.STATE || 'N/A'}</span>
+              <span style="color: #666;">Technology</span>
+              <span>${plant.TECH_DESC || 'N/A'}</span>
+            </div>
+          </div>
+        `, { maxWidth: 280 })
+
+        marker.addTo(genGroup)
+      })
+
+      // Don't show by default (too many markers) — user toggles via legend
+      genLayerRef.current = genGroup
+    }
+  }, [generationPlants])
+
+  // Queue project layers
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (queueLayerRef.current) {
+      queueLayerRef.current.remove()
+      queueLayerRef.current = null
+    }
+
+    if (queueProjects && queueProjects.length > 0) {
+      const queueGroup = L.layerGroup()
+      const withCoords = queueProjects.filter(p => p.lat && p.lon)
+
+      withCoords.forEach((project) => {
+        const fuel = project.fuel_category || 'Other'
+        const color = FUEL_COLORS[fuel] || FUEL_COLORS['Other']
+
+        const marker = L.circleMarker([project.lat!, project.lon!], {
+          radius: 4,
+          fillColor: color,
+          color: '#fff',
+          weight: 1.5,
+          opacity: 0.8,
+          fillOpacity: 0.6,
+          dashArray: '3',
+        })
+
+        marker.bindPopup(`
+          <div style="font-family: -apple-system, sans-serif; min-width: 220px; color: #1a1a2e;">
+            <div style="font-size: 12px; font-weight: 700; margin-bottom: 4px; border-bottom: 2px dashed ${color}; padding-bottom: 3px;">
+              QUEUE: ${project.project_name || 'Unknown'}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; font-size: 11px;">
+              <span style="color: #666;">Fuel</span>
+              <span style="color: ${color}; font-weight: 600;">${fuel}</span>
+              <span style="color: #666;">Capacity</span>
+              <span>${project.capacity_mw ? Math.round(project.capacity_mw).toLocaleString() + ' MW' : 'N/A'}</span>
+              <span style="color: #666;">ISO</span>
+              <span>${project.iso || 'N/A'}</span>
+              <span style="color: #666;">Status</span>
+              <span>${project.status_normalized || project.status || 'N/A'}</span>
+              <span style="color: #666;">POI</span>
+              <span>${project.poi_name || 'N/A'}</span>
+              <span style="color: #666;">Developer</span>
+              <span>${project.developer || 'N/A'}</span>
+            </div>
+          </div>
+        `, { maxWidth: 300 })
+
+        marker.addTo(queueGroup)
+      })
+
+      queueLayerRef.current = queueGroup
+    }
+  }, [queueProjects])
+
+  // Toggle generation layers
+  const [showGenPlants, setShowGenPlants] = useState(false)
+  const [showQueue, setShowQueue] = useState(false)
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (genLayerRef.current) {
+      if (showGenPlants) genLayerRef.current.addTo(map)
+      else genLayerRef.current.remove()
+    }
+  }, [showGenPlants])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (queueLayerRef.current) {
+      if (showQueue) queueLayerRef.current.addTo(map)
+      else queueLayerRef.current.remove()
+    }
+  }, [showQueue])
+
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full rounded-lg" />
@@ -207,6 +366,33 @@ export default function SiteMap({ sites, selectedSite, onSiteSelect }: MapProps)
             <span className="text-gray-300">Grade {grade}</span>
           </div>
         ))}
+
+        {/* Generation layer toggles */}
+        {(generationPlants && generationPlants.length > 0) && (
+          <>
+            <div className="border-t border-gray-700 my-1.5" />
+            <label className="flex items-center gap-2 py-0.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showGenPlants}
+                onChange={(e) => setShowGenPlants(e.target.checked)}
+                className="w-3 h-3 rounded accent-purple-500"
+              />
+              <span className="text-purple-400">Power Plants ({generationPlants.length.toLocaleString()})</span>
+            </label>
+          </>
+        )}
+        {(queueProjects && queueProjects.length > 0) && (
+          <label className="flex items-center gap-2 py-0.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showQueue}
+              onChange={(e) => setShowQueue(e.target.checked)}
+              className="w-3 h-3 rounded accent-cyan-500"
+            />
+            <span className="text-cyan-400">Queue Projects ({queueProjects.filter(p => p.lat && p.lon).length.toLocaleString()})</span>
+          </label>
+        )}
       </div>
     </div>
   )

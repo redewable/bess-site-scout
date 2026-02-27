@@ -55,8 +55,36 @@ export async function GET() {
       voltDistribution[vc] = (voltDistribution[vc] || 0) + 1
     }
 
+    // Load generation asset data if available
+    let generationPlants = null
+    let interconnectionQueue = null
+    let generationSummary = null
+
+    try {
+      const plantsFile = path.join(outputDir, 'generation_plants.geojson')
+      if (fs.existsSync(plantsFile)) {
+        generationPlants = JSON.parse(fs.readFileSync(plantsFile, 'utf-8'))
+      }
+    } catch {}
+
+    try {
+      const queueFile = path.join(outputDir, 'interconnection_queue.geojson')
+      if (fs.existsSync(queueFile)) {
+        interconnectionQueue = JSON.parse(fs.readFileSync(queueFile, 'utf-8'))
+      }
+    } catch {}
+
+    try {
+      const summaryFile = path.join(outputDir, 'generation_summary.json')
+      if (fs.existsSync(summaryFile)) {
+        generationSummary = JSON.parse(fs.readFileSync(summaryFile, 'utf-8'))
+      }
+    } catch {}
+
     return NextResponse.json({
       geojson,
+      generationPlants,
+      interconnectionQueue,
       meta: {
         total_sites: features.length,
         grades,
@@ -71,6 +99,7 @@ export async function GET() {
         state_distribution: stateDistribution,
         generated: files[0].match(/(\d{8}_\d{6})/)?.[1] || 'unknown',
         filename: files[0],
+        generation_summary: generationSummary,
       },
     })
   } catch (err: any) {

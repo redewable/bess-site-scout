@@ -261,3 +261,141 @@ def export_geojson(
 
     logger.info(f"GeoJSON exported to {filepath} ({len(features)} features)")
     return str(filepath)
+
+
+def export_generation_geojson(
+    generation_data: dict,
+    output_dir: str = "./output",
+) -> str:
+    """
+    Export generation assets (plants + interconnection queue) as GeoJSON.
+
+    Creates a separate GeoJSON file for the dashboard to display
+    power plants and queued interconnection projects as map layers.
+
+    Output files:
+      - generation_plants.geojson — Operating and planned power plants
+      - interconnection_queue.geojson — ISO/RTO queue projects
+    """
+    import geopandas as gpd
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    paths = []
+
+    # --- Power Plants ---
+    plants_info = generation_data.get("plants", {})
+    plants_gdf = plants_info.get("plants_gdf")
+
+    if plants_gdf is not None and not plants_gdf.empty:
+        plants_path = output_path / "generation_plants.geojson"
+
+        # Select columns for export (drop geometry to rebuild clean)
+        export_cols = [
+            "NAME", "STATE", "capacity_mw", "fuel_category",
+            "TECH_DESC", "NAICS_DESC", "NET_GEN", "STATUS",
+            "lat", "lon",
+        ]
+        available = [c for c in export_cols if c in plants_gdf.columns]
+
+        features = []
+        for _, row in plants_gdf.iterrows():
+            lat = row.get("lat")
+            lon = row.get("lon")
+            if lat and lon and not pd.isna(lat) and not pd.isna(lon):
+                props = {}
+                for col in available:
+                    val = row.get(col)
+                    if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                        props[col] = val
+                    else:
+                        props[col] = ""
+                props["layer_type"] = "power_plant"
+
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
+                    "properties": props,
+                })
+
+        geojson = {"type": "FeatureCollection", "features": features}
+        with open(plants_path, "w") as f:
+            json.dump(geojson, f)
+
+        logger.info(f"Generation plants GeoJSON: {plants_path} ({len(features)} plants)")
+        paths.append(str(plants_path))
+
+    # --- Interconnection Queue ---
+    queues_info = generation_data.get("queues", {})
+    queues_df = queues_info.get("data")
+
+    if queues_df is not None and not queues_df.empty:
+        queue_path = output_path / "interconnection_queue.geojson"
+
+        queue_cols = [
+            "project_name", "developer", "fuel_type", "fuel_category",
+            "capacity_mw", "status", "status_normalized", "queue_date",
+            "poi_name", "county", "state", "iso",
+        ]
+
+        features = []
+        for _, row in queues_df.iterrows():
+            lat = row.get("lat")
+            lon = row.get("lon")
+
+            props = {}
+            for col in queue_cols:
+                val = row.get(col)
+                if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                    # Convert timestamps to string
+                    if hasattr(val, "isoformat"):
+                        props[col] = val.isoformat()
+                    else:
+                        props[col] = val
+                else:
+                    props[col] = ""
+            props["layer_type"] = "interconnection_queue"
+
+            if lat and lon and not pd.isna(lat) and not pd.isna(lon):
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
+                    "properties": props,
+                })
+            else:
+                # Queue projects without coordinates — still export as null geometry
+                features.append({
+                    "type": "Feature",
+                    "geometry": None,
+                    "properties": props,
+                })
+
+        geojson = {"type": "FeatureCollection", "features": features}
+        with open(queue_path, "w") as f:
+            json.dump(geojson, f)
+
+        with_coords = sum(1 for f in features if f["geometry"] is not None)
+        logger.info(
+            f"Interconnection queue GeoJSON: {queue_path} "
+            f"({len(features)} projects, {with_coords} with coordinates)"
+        )
+        paths.append(str(queue_path))
+
+    # --- Summary JSON ---
+    summary = {
+        "generated": datetime.now().isoformat(),
+        "plants": {
+            "total": plants_info.get("total_plants", 0),
+            "total_capacity_mw": plants_info.get("total_capacity_mw", 0),
+            "fuel_mix": plants_info.get("fuel_mix", {}),
+        },
+        "queues": queues_info.get("summary", {}),
+        "egrid": generation_data.get("egrid", {}),
+    }
+
+    summary_path = output_path / "generation_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2, default=str)
+    paths.append(str(summary_path))
+
+    return "; ".join(paths)

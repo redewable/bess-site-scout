@@ -79,7 +79,7 @@ const SCORING_FACTORS = [
     label: 'Solar Resource',
     icon: '\u2600\uFE0F',
     description: 'NREL Global Horizontal Irradiance (GHI). Higher = better solar co-location.',
-    scale: '5.5+ kWh/m\u00B2/day = 100, <3.5 = 15',
+    scale: '5.5+ kWh/m²/day = 100, <3.5 = 15',
   },
 ]
 
@@ -181,7 +181,7 @@ export default function SiteDetail({ site, onClose }: SiteDetailProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-gray-400">{score.toFixed(1)}</span>
-                      <span className="text-[10px] text-gray-600">\u00D7{weight?.toFixed(2)}</span>
+                      <span className="text-[10px] text-gray-600">&times;{weight?.toFixed(2)}</span>
                       <span className="text-xs font-mono text-white font-bold">{weighted}</span>
                     </div>
                   </div>
@@ -198,10 +198,10 @@ export default function SiteDetail({ site, onClose }: SiteDetailProps) {
           <div className="mt-3 pt-3 border-t border-gray-800">
             <p className="text-[10px] text-gray-500 mb-1.5 uppercase tracking-wider font-semibold">Grading Scale</p>
             <div className="flex gap-2 text-[10px]">
-              <span className="text-green-400">A: \u226580</span>
-              <span className="text-lime-400">B: \u226565</span>
-              <span className="text-amber-400">C: \u226550</span>
-              <span className="text-red-400">D: \u226535</span>
+              <span className="text-green-400">A: &ge;80</span>
+              <span className="text-lime-400">B: &ge;65</span>
+              <span className="text-amber-400">C: &ge;50</span>
+              <span className="text-red-400">D: &ge;35</span>
               <span className="text-red-700">F: &lt;35</span>
             </div>
           </div>
@@ -286,8 +286,8 @@ export default function SiteDetail({ site, onClose }: SiteDetailProps) {
             <InfoItem label="Nearby Plants" value={`${site.eia_nearby_plants || 0}`} />
             <InfoItem label="Nearby Capacity" value={site.eia_nearby_capacity_mw ? `${Math.round(site.eia_nearby_capacity_mw).toLocaleString()} MW` : 'N/A'} />
             <InfoItem label="Grid Density Score" value={`${site.eia_grid_density_score || 'N/A'} / 100`} />
-            <InfoItem label="Solar GHI" value={site.ghi_annual ? `${site.ghi_annual} kWh/m\u00B2/d` : 'N/A'} />
-            <InfoItem label="Solar DNI" value={site.nrel_dni_annual ? `${site.nrel_dni_annual} kWh/m\u00B2/d` : 'N/A'} />
+            <InfoItem label="Solar GHI" value={site.ghi_annual ? `${site.ghi_annual} kWh/m²/d` : 'N/A'} />
+            <InfoItem label="Solar DNI" value={site.nrel_dni_annual ? `${site.nrel_dni_annual} kWh/m²/d` : 'N/A'} />
             <InfoItem label="Co-location" value={site.solar_co_location || site.nrel_co_location_potential || 'N/A'} />
           </InfoGrid>
         </Section>

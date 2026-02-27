@@ -282,8 +282,18 @@ class EIA860MIngestor:
         all_records = []
         offset = 0
         page_size = 5000
+        max_pages = 20  # Safety limit: 20 pages × 5000 = 100K records max
+        page_count = 0
 
         while True:
+            page_count += 1
+            if page_count > max_pages:
+                logger.warning(
+                    f"  EIA pagination hit max_pages={max_pages} "
+                    f"({len(all_records)} records). Stopping."
+                )
+                break
+
             params = {
                 "api_key": self.api_key,
                 "frequency": "monthly",
@@ -309,6 +319,7 @@ class EIA860MIngestor:
                     EIA_OPGEN_ENDPOINT,
                     params=params,
                     cache_hours=self.cache_hours,
+                    timeout=90,  # explicit 90s timeout for EIA
                 )
             except Exception as e:
                 logger.error(f"EIA API request failed: {e}")

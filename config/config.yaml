@@ -114,12 +114,19 @@ generation_assets:
     enabled: true
     data_year: 2022  # Latest available eGRID year
 
+# --- Pipeline Timeouts ---
+# Prevents any single API call from hanging the entire scan
+pipeline:
+  per_query_timeout: 30    # Per-site API query timeout (seconds)
+  phase_timeout: 120       # Per-phase timeout (seconds)
+
 # --- Market & Revenue Data ---
 # Wholesale electricity market data for BESS revenue modeling
 market_data:
+  timeout_seconds: 90      # Max time per market data ingestor
   lmp:
     enabled: true
-    days_back: 30  # Days of LMP history to fetch
+    days_back: 7  # Days of LMP history (7 is fast; use 30 for deeper analysis)
     isos: ["ERCOT", "CAISO", "PJM", "MISO", "NYISO", "SPP"]
   congestion:
     enabled: true

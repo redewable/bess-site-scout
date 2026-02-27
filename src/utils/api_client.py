@@ -26,12 +26,14 @@ class APIClient:
         self.cache_enabled = cache_enabled
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Setup session with retry
+        # Setup session with retry (reduced retries to prevent long hangs)
         self.session = requests.Session()
         retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
+            total=2,
+            backoff_factor=0.5,
             status_forcelist=[429, 500, 502, 503, 504],
+            connect=2,
+            read=2,
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
@@ -82,9 +84,9 @@ class APIClient:
         url: str,
         params: Optional[dict] = None,
         cache_hours: float = 24,
-        timeout: int = 60,
+        timeout: int = 45,
     ) -> dict:
-        """Make a cached GET request."""
+        """Make a cached GET request. timeout is (connect, read) in seconds."""
         params = params or {}
         cache_key = self._cache_key(url, params)
 
@@ -93,13 +95,13 @@ class APIClient:
         if cached is not None:
             return cached
 
-        # Make request
+        # Make request — use tuple timeout: (connect_timeout, read_timeout)
         self._rate_limit()
         logger.info(f"GET {url}")
         logger.debug(f"  params: {params}")
 
         try:
-            response = self.session.get(url, params=params, timeout=timeout)
+            response = self.session.get(url, params=params, timeout=(10, timeout))
             response.raise_for_status()
             data = response.json()
             self._set_cache(cache_key, data)
@@ -108,10 +110,10 @@ class APIClient:
             logger.error(f"Request failed: {url} — {e}")
             raise
 
-    def get_raw(self, url: str, params: Optional[dict] = None, timeout: int = 60) -> str:
+    def get_raw(self, url: str, params: Optional[dict] = None, timeout: int = 45) -> str:
         """Make a GET request and return raw text (no caching)."""
         self._rate_limit()
-        response = self.session.get(url, params=params, timeout=timeout)
+        response = self.session.get(url, params=params, timeout=(10, timeout))
         response.raise_for_status()
         return response.text
 
@@ -137,16 +139,29 @@ class ArcGISClient(APIClient):
         return_geometry: bool = True,
         cache_hours: float = 24,
         max_records: Optional[int] = None,
+        max_pages: int = 50,
     ) -> dict:
         """
         Query an ArcGIS Feature Service and return GeoJSON.
         Handles pagination automatically.
+
+        Args:
+            max_pages: Safety limit on pagination loops (default 50 = 50,000 records max)
         """
         all_features = []
         offset = 0
         records_per_page = self.MAX_RECORD_COUNT
+        page_count = 0
 
         while True:
+            page_count += 1
+            if page_count > max_pages:
+                logger.warning(
+                    f"  ArcGIS pagination hit max_pages={max_pages} "
+                    f"({len(all_features)} features). Stopping."
+                )
+                break
+
             params = {
                 "where": where,
                 "outFields": out_fields,
@@ -171,7 +186,11 @@ class ArcGISClient(APIClient):
                 params["units"] = units
 
             url = f"{service_url}/query"
-            data = self.get(url, params=params, cache_hours=cache_hours)
+            try:
+                data = self.get(url, params=params, cache_hours=cache_hours)
+            except Exception as e:
+                logger.warning(f"  ArcGIS page {page_count} failed: {e}")
+                break
 
             features = data.get("features", [])
             all_features.extend(features)

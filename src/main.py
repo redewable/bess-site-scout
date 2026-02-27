@@ -16,8 +16,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 import yaml
+import pandas as pd
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +38,24 @@ def load_config(config_path: str = "config/config.yaml") -> dict:
         sys.exit(1)
     with open(path, "r") as f:
         return yaml.safe_load(f)
+
+
+def _run_with_timeout(func, timeout_sec: int, label: str, default=None):
+    """
+    Run a callable with a hard timeout. Returns default on timeout or error.
+    Prevents any single ingestor from hanging the entire pipeline.
+    """
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func)
+            result = future.result(timeout=timeout_sec)
+            return result
+    except FuturesTimeout:
+        logger.warning(f"⏱️  {label} timed out after {timeout_sec}s — skipping")
+        return default
+    except Exception as e:
+        logger.warning(f"⚠️  {label} failed: {e}")
+        return default
 
 
 def run_pipeline(config: dict, test_mode: bool = False):
@@ -180,63 +200,76 @@ def run_pipeline(config: dict, test_mode: bool = False):
     logger.info("\n💰 PHASE 3: Fetching Market & Revenue Data...")
     market_data = {}
     market_config = config.get("market_data", {})
-    lmp_days = market_config.get("lmp", {}).get("days_back", 30)
+    # Per-ingestor timeout (seconds) — prevents any single ISO fetch from hanging
+    market_timeout = market_config.get("timeout_seconds", 90)
+    lmp_days = market_config.get("lmp", {}).get("days_back", 7)  # default 7, not 30
+
+    lmp_df = pd.DataFrame()  # initialize for later use
 
     # 3a. Locational Marginal Prices (LMP)
-    try:
+    if market_config.get("lmp", {}).get("enabled", True):
         lmp_ingestor = LMPIngestor(config)
-        lmp_df = lmp_ingestor.get_all_lmps(days_back=lmp_days)
+
+        def _fetch_lmp():
+            return lmp_ingestor.get_all_lmps(days_back=lmp_days)
+
+        result = _run_with_timeout(_fetch_lmp, market_timeout, "LMP fetch", default=pd.DataFrame())
+        if result is not None:
+            lmp_df = result
         lmp_summary = lmp_ingestor.get_lmp_summary()
         market_data["lmp"] = lmp_summary
         if not lmp_df.empty:
             logger.info(f"✅ LMP: {len(lmp_df)} price records across {len(lmp_summary.get('isos_covered', []))} ISOs")
         else:
             logger.info("  LMP: No live data (reference prices available)")
-    except Exception as e:
-        logger.warning(f"⚠️  LMP ingestion failed: {e}")
 
     # 3b. Transmission Congestion
-    try:
+    if market_config.get("congestion", {}).get("enabled", True):
         congestion_ingestor = CongestionIngestor(config)
-        cong_df = congestion_ingestor.get_all_congestion()
+
+        def _fetch_congestion():
+            return congestion_ingestor.get_all_congestion()
+
+        cong_df = _run_with_timeout(_fetch_congestion, market_timeout, "Congestion fetch", default=pd.DataFrame())
         cong_summary = congestion_ingestor.get_congestion_summary(
-            lmp_df if "lmp_df" in dir() and not lmp_df.empty else None
+            lmp_df if not lmp_df.empty else None
         )
         market_data["congestion"] = cong_summary
         logger.info(f"✅ Congestion: {cong_summary.get('total_constraint_records', 0)} constraint records")
-    except Exception as e:
-        logger.warning(f"⚠️  Congestion data failed: {e}")
 
-    # 3c. Capacity Market Prices
-    try:
-        capacity_ingestor = CapacityMarketIngestor(config)
-        capacity_summary = capacity_ingestor.get_capacity_summary()
-        market_data["capacity"] = capacity_summary
-        top_iso = capacity_summary.get("revenue_ranking", [{}])[0]
-        logger.info(
-            f"✅ Capacity Markets: {len(capacity_summary.get('isos_with_capacity_markets', []))} "
-            f"ISOs with capacity markets (top: {top_iso.get('iso', 'N/A')} "
-            f"${top_iso.get('annual_$/MW', 0):,.0f}/MW/yr)"
-        )
-    except Exception as e:
-        logger.warning(f"⚠️  Capacity market data failed: {e}")
+    # 3c. Capacity Market Prices (reference data only — no live fetch needed)
+    if market_config.get("capacity_markets", {}).get("enabled", True):
+        try:
+            capacity_ingestor = CapacityMarketIngestor(config)
+            capacity_summary = capacity_ingestor.get_capacity_summary()
+            market_data["capacity"] = capacity_summary
+            top_iso = capacity_summary.get("revenue_ranking", [{}])[0]
+            logger.info(
+                f"✅ Capacity Markets: {len(capacity_summary.get('isos_with_capacity_markets', []))} "
+                f"ISOs with capacity markets (top: {top_iso.get('iso', 'N/A')} "
+                f"${top_iso.get('annual_$/MW', 0):,.0f}/MW/yr)"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️  Capacity market data failed: {e}")
 
-    # 3d. Ancillary Services Pricing
-    try:
-        as_ingestor = AncillaryServicesIngestor(config)
-        as_summary = as_ingestor.get_as_summary()
-        market_data["ancillary_services"] = as_summary
-        top_as = as_summary.get("best_as_markets", [{}])[0]
-        logger.info(
-            f"✅ Ancillary Services: Reference prices for {len(as_summary.get('reference_prices', {}))} ISOs "
-            f"(best: {top_as.get('iso', 'N/A')} ${top_as.get('annual_$/100MW', 0):,.0f}/100MW/yr)"
-        )
-    except Exception as e:
-        logger.warning(f"⚠️  Ancillary services data failed: {e}")
+    # 3d. Ancillary Services Pricing (reference data only — no live fetch needed)
+    if market_config.get("ancillary_services", {}).get("enabled", True):
+        try:
+            as_ingestor = AncillaryServicesIngestor(config)
+            as_summary = as_ingestor.get_as_summary()
+            market_data["ancillary_services"] = as_summary
+            top_as = as_summary.get("best_as_markets", [{}])[0]
+            logger.info(
+                f"✅ Ancillary Services: Reference prices for {len(as_summary.get('reference_prices', {}))} ISOs "
+                f"(best: {top_as.get('iso', 'N/A')} ${top_as.get('annual_$/100MW', 0):,.0f}/100MW/yr)"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️  Ancillary services data failed: {e}")
 
-    # 3e. Renewable Curtailment
-    try:
+    # 3e. Renewable Curtailment (reference scores always work; live fetch optional)
+    if market_config.get("curtailment", {}).get("enabled", True):
         curtailment_ingestor = CurtailmentIngestor(config)
+        # Curtailment summary uses reference data (instant) — live fetch is bonus
         curtailment_summary = curtailment_ingestor.get_curtailment_summary()
         market_data["curtailment"] = curtailment_summary
         top_curt = curtailment_summary.get("opportunity_ranking", [{}])[0]
@@ -244,8 +277,6 @@ def run_pipeline(config: dict, test_mode: bool = False):
             f"✅ Curtailment: {len(curtailment_summary.get('iso_scores', {}))} ISOs scored "
             f"(best opportunity: {top_curt.get('iso', 'N/A')} score={top_curt.get('score', 0):.0f})"
         )
-    except Exception as e:
-        logger.warning(f"⚠️  Curtailment data failed: {e}")
 
     # =========================================================
     # PHASE 4: Site Feasibility Data
@@ -309,107 +340,111 @@ def run_pipeline(config: dict, test_mode: bool = False):
         else:
             voltage_kv = 138
 
-        # --- Environmental screens ---
-        try:
-            fema_result = fema_ingestor.assess_flood_risk(lat, lon)
+        # Per-site query timeout (seconds) — prevents one bad API call from stalling
+        site_timeout = config.get("pipeline", {}).get("per_query_timeout", 30)
+
+        # --- Environmental screens (with timeouts) ---
+        fema_default = {"risk_level": "unknown", "eliminate": False, "risk_flags": []}
+        fema_result = _run_with_timeout(
+            lambda: fema_ingestor.assess_flood_risk(lat, lon),
+            site_timeout, f"FEMA@{sub_name}", fema_default
+        )
+        if fema_result.get("details"):
             logger.info(f"    FEMA: {fema_result['details']}")
-        except Exception as e:
-            logger.warning(f"    FEMA query failed: {e}")
-            fema_result = {"risk_level": "unknown", "eliminate": False, "risk_flags": []}
 
-        try:
-            epa_result = epa_ingestor.run_full_screening(lat, lon)
-            flag_count = len(epa_result.get("risk_flags", []))
-            logger.info(f"    EPA: {flag_count} flag(s)")
-        except Exception as e:
-            logger.warning(f"    EPA query failed: {e}")
-            epa_result = {"eliminate": False, "risk_flags": []}
+        epa_default = {"eliminate": False, "risk_flags": []}
+        epa_result = _run_with_timeout(
+            lambda: epa_ingestor.run_full_screening(lat, lon),
+            site_timeout, f"EPA@{sub_name}", epa_default
+        )
+        logger.info(f"    EPA: {len(epa_result.get('risk_flags', []))} flag(s)")
 
-        try:
-            tceq_result = tceq_ingestor.run_full_screening(lat, lon)
-            flag_count = len(tceq_result.get("risk_flags", []))
-            logger.info(f"    TCEQ: {flag_count} flag(s)")
-        except Exception as e:
-            logger.warning(f"    TCEQ query failed: {e}")
-            tceq_result = {"eliminate": False, "risk_flags": []}
+        tceq_default = {"eliminate": False, "risk_flags": []}
+        tceq_result = _run_with_timeout(
+            lambda: tceq_ingestor.run_full_screening(lat, lon),
+            site_timeout, f"TCEQ@{sub_name}", tceq_default
+        )
+        logger.info(f"    TCEQ: {len(tceq_result.get('risk_flags', []))} flag(s)")
 
-        try:
-            usfws_result = usfws_ingestor.run_full_screening(lat, lon)
-            flag_count = len(usfws_result.get("risk_flags", []))
-            logger.info(f"    USFWS: {flag_count} flag(s)")
-        except Exception as e:
-            logger.warning(f"    USFWS query failed: {e}")
-            usfws_result = {"eliminate": False, "risk_flags": []}
+        usfws_default = {"eliminate": False, "risk_flags": []}
+        usfws_result = _run_with_timeout(
+            lambda: usfws_ingestor.run_full_screening(lat, lon),
+            site_timeout, f"USFWS@{sub_name}", usfws_default
+        )
+        logger.info(f"    USFWS: {len(usfws_result.get('risk_flags', []))} flag(s)")
 
         # --- Grid density assessment ---
-        try:
-            eia_result = eia_ingestor.assess_grid_density(lat, lon)
-            logger.info(
-                f"    EIA: {eia_result['nearby_plants']} plants, "
-                f"{eia_result['nearby_capacity_mw']:.0f} MW nearby"
-            )
-        except Exception as e:
-            logger.warning(f"    EIA query failed: {e}")
-            eia_result = {"grid_density_score": 50, "risk_flags": []}
+        eia_default = {"grid_density_score": 50, "risk_flags": [], "nearby_plants": 0, "nearby_capacity_mw": 0}
+        eia_result = _run_with_timeout(
+            lambda: eia_ingestor.assess_grid_density(lat, lon),
+            site_timeout, f"EIA@{sub_name}", eia_default
+        )
+        logger.info(
+            f"    EIA: {eia_result.get('nearby_plants', 0)} plants, "
+            f"{eia_result.get('nearby_capacity_mw', 0):.0f} MW nearby"
+        )
 
         # --- Solar resource ---
-        try:
-            nrel_result = nrel_ingestor.get_solar_resource(lat, lon)
-            logger.info(
-                f"    NREL: GHI={nrel_result['ghi_annual']} kWh/m²/day, "
-                f"co-location={nrel_result['co_location_potential']}"
-            )
-        except Exception as e:
-            logger.warning(f"    NREL query failed: {e}")
-            nrel_result = {"solar_score": 50, "ghi_annual": 0}
+        nrel_default = {"solar_score": 50, "ghi_annual": 0, "co_location_potential": "unknown"}
+        nrel_result = _run_with_timeout(
+            lambda: nrel_ingestor.get_solar_resource(lat, lon),
+            site_timeout, f"NREL@{sub_name}", nrel_default
+        )
+        logger.info(
+            f"    NREL: GHI={nrel_result.get('ghi_annual', 0)} kWh/m²/day, "
+            f"co-location={nrel_result.get('co_location_potential', 'unknown')}"
+        )
 
         # --- Land Use (NLCD) ---
-        try:
-            land_use_result = land_use_ingestor.score_land_suitability(lat, lon)
-            logger.info(
-                f"    NLCD: {land_use_result.get('nlcd_class', 'Unknown')} "
-                f"(score={land_use_result.get('land_use_score', 0)})"
-            )
-        except Exception as e:
-            logger.warning(f"    NLCD query failed: {e}")
-            land_use_result = {"land_use_score": 50, "land_use_tier": "Unknown"}
+        land_default = {"land_use_score": 50, "land_use_tier": "Unknown", "nlcd_class": "Unknown"}
+        land_use_result = _run_with_timeout(
+            lambda: land_use_ingestor.score_land_suitability(lat, lon),
+            site_timeout, f"NLCD@{sub_name}", land_default
+        )
+        logger.info(
+            f"    NLCD: {land_use_result.get('nlcd_class', 'Unknown')} "
+            f"(score={land_use_result.get('land_use_score', 0)})"
+        )
 
         # --- Utility Territory ---
+        utility_default = {"utility_name": "Unknown"}
+        utility_result = _run_with_timeout(
+            lambda: utility_ingestor.get_utility_at_point(lat, lon),
+            site_timeout, f"Utility@{sub_name}", utility_default
+        )
         try:
-            utility_result = utility_ingestor.get_utility_at_point(lat, lon)
             utility_result["interconnection"] = utility_ingestor.classify_interconnection_process(utility_result)
-            logger.info(
-                f"    Utility: {utility_result.get('utility_name', 'Unknown')} "
-                f"({utility_result.get('ownership_type', '')})"
-            )
-        except Exception as e:
-            logger.warning(f"    Utility query failed: {e}")
-            utility_result = {"utility_name": "Unknown"}
+        except Exception:
+            pass
+        logger.info(
+            f"    Utility: {utility_result.get('utility_name', 'Unknown')} "
+            f"({utility_result.get('ownership_type', '')})"
+        )
 
         # --- Incentives & ITC ---
         site_state = sub.get("STATE", "")
-        try:
-            incentive_result = incentives_ingestor.get_incentive_score(lat, lon, site_state)
-            logger.info(
-                f"    Incentives: ITC={incentive_result.get('federal_itc_pct', 30)}% "
-                f"(EC={incentive_result.get('is_energy_community', False)}) "
-                f"State={incentive_result.get('state_rating', 'Unknown')}"
-            )
-        except Exception as e:
-            logger.warning(f"    Incentive check failed: {e}")
-            incentive_result = {"federal_itc_pct": 30, "combined_incentive_score": 50}
+        incentive_default = {"federal_itc_pct": 30, "combined_incentive_score": 50}
+        incentive_result = _run_with_timeout(
+            lambda: incentives_ingestor.get_incentive_score(lat, lon, site_state),
+            site_timeout, f"Incentives@{sub_name}", incentive_default
+        )
+        logger.info(
+            f"    Incentives: ITC={incentive_result.get('federal_itc_pct', 30)}% "
+            f"(EC={incentive_result.get('is_energy_community', False)}) "
+            f"State={incentive_result.get('state_rating', 'Unknown')}"
+        )
 
         # --- Soil (SSURGO) ---
-        try:
-            soil_result = soil_ingestor.get_soil_suitability(lat, lon)
-            logger.info(
-                f"    Soil: {soil_result.get('soil_name', 'Unknown')} "
-                f"(score={soil_result.get('bess_score', 50)}, "
-                f"drainage={soil_result.get('drainage_class', 'Unknown')})"
-            )
-        except Exception as e:
-            logger.warning(f"    Soil query failed: {e}")
-            soil_result = {"bess_score": 50, "score_tier": "Unknown"}
+        soil_default = {"bess_score": 50, "score_tier": "Unknown", "soil_name": "Unknown", "drainage_class": "Unknown"}
+        soil_result = _run_with_timeout(
+            lambda: soil_ingestor.get_soil_suitability(lat, lon),
+            site_timeout, f"Soil@{sub_name}", soil_default
+        )
+        logger.info(
+            f"    Soil: {soil_result.get('soil_name', 'Unknown')} "
+            f"(score={soil_result.get('bess_score', 50)}, "
+            f"drainage={soil_result.get('drainage_class', 'Unknown')})"
+        )
 
         # --- Score ---
         env_score = env_scorer.score_parcel(
